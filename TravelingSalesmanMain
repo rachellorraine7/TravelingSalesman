@@ -1,0 +1,449 @@
+#include <iostream>
+#include <vector>
+#include <fstream>
+#include <string>
+#include <cmath>
+#include <climits>
+#include <algorithm>
+#include <cstdlib>
+using namespace std;
+
+double best_dist;
+vector<int> best_tour;
+
+//this variable counts how many iterations of simulating annealing has been done to control how many answers we print out
+int go = 0;
+
+
+void Print(vector<int> v)
+{
+  for(int i = 0; i< v.size(); i++)
+    {
+      cout << v[i] << " ";
+    }
+  cout << endl;
+}
+
+double Distance(double x1, double y1, double x2, double y2)
+{
+  double term1 = (x1-x2)*(x1-x2);
+  double term2 = (y1-y2)*(y1-y2);
+  double sum = term1 + term2;
+  double answer = sqrt(sum);
+  return answer;
+}
+
+vector<double> Distance_Vector(vector<vector<double>>& points, int x)
+{
+    vector<double> v;
+    double d;
+    for(int i = 0; i < points.size(); i++)
+      {
+        d = Distance(points[x][0], points[x][1], points[i][0], points[i][1]);
+        v.push_back(d);
+      }
+    return v;
+}
+
+double Smallest_Distance(vector<double>& distances, vector<int>& houses, vector<bool>& visited, int& x)
+{
+  double min = INT_MAX;
+  int min_index = -1;
+  for(int i = 0; i < distances.size(); i++)
+    {
+      if(distances[i] < min && distances[i] > 0 && visited[i] == 0)
+      {
+        min = distances[i];
+        min_index = i;
+      }
+    }
+  x = min_index;
+  return min;
+  
+}
+
+bool Done(vector<bool>& visited)
+{
+  bool done = true;
+  int i = 0;
+  while(done == true && i < visited.size())
+    {
+      if(visited[i] == 0)
+        done = false;
+      i++;
+    }
+  return done;
+}
+
+
+double Tour(vector<vector<double>>& points, vector<int>& houses, vector<bool>& visited)
+{
+  vector<double> distances;
+  double smallest_distance;
+  int smallest_distance_index;
+  int next = -1;
+  double sum = 0;
+  bool done = Done(visited);
+  int index = 0;
+  visited[0] = 1;
+  houses[0] = 0;
+  int count = 1;
+  while(done == false)
+    {
+      distances = Distance_Vector(points, index);
+      smallest_distance= Smallest_Distance(distances, houses, visited, next);
+      sum += smallest_distance;
+      visited[next] = 1;
+      houses[count] = next;
+      done = Done(visited);
+      index = next;
+      count++;
+    }
+  double final_distance = Distance(points[0][0], points[0][1], points[index][0], points[index][1]);
+  sum += final_distance;
+  return sum;
+}
+
+//call with 0 (start), number of houses k, vector of order we visited stuff, put 0 in vector, call again for 1 thru k and store their answers to compare 
+//base case = we visited them all
+//branch and bound: measure distance from current house to 0 and add to our distance, compare to greedy
+double Recursive_TSP(vector<vector<double>>& points, vector<int>& tour, vector<bool>& visited, int prev_point, int cur_point, double cur_dist, double& greedy_dist)
+{
+  //add cur_point to tour and make it visited
+  tour.push_back(cur_point);
+  visited[cur_point] = 1;// this function uses this vertex, no descendant can
+  // if not at start, add distance from last point
+  if(cur_point != 0)
+  cur_dist += Distance(points[cur_point][0], points[cur_point][1], points[prev_point][0], points[prev_point][1]);
+
+  //see if we're done
+  if(Done(visited) == true){
+    cur_dist += Distance(points[cur_point][0], points[cur_point][1], points[0][0], points[0][1]);
+    visited[cur_point] = 0;
+    return cur_dist;
+  }
+    
+
+  //branch and bound
+  double underestimate = cur_dist + Distance(points[cur_point][0], points[cur_point][1], points[0][0], points[0][1]);
+  if(underestimate > greedy_dist)
+  {
+    //no hope, end branch
+    visited[cur_point] = 0;
+    return INT_MAX; //gonna make sure this path is definitely not the smallest
+  }
+  
+  //make next permutations
+  vector<double> compare_dist;
+  vector<vector<int>> new_tours;
+  vector<int> orig_tour = tour;
+  for(int i = 0; i < visited.size(); i++)
+    {
+      if(visited[i] == 0){
+        compare_dist.push_back(Recursive_TSP(points, tour, visited, cur_point, i, cur_dist, greedy_dist));
+        
+      new_tours.push_back(tour);
+        tour = orig_tour;
+    }
+      }
+
+  double min = compare_dist[0];
+  vector<int> min_tour = new_tours[0];
+  for(int i = 1; i < compare_dist.size(); i++)
+    {
+      if(compare_dist[i] < min)
+      {
+        min = compare_dist[i];
+        min_tour = new_tours[i];
+
+      }
+    }
+  visited[cur_point] = 0;
+  tour = min_tour;
+
+  if(min < greedy_dist){
+    if(min < best_dist)
+    {
+      best_dist = min;
+      best_tour = min_tour;
+    }
+    }
+  
+  if(min < greedy_dist){
+    cout << min << endl;
+  Print(min_tour);
+  }
+  
+  return min;
+  
+}
+
+double Next_Vertex_Dist(vector<vector<double>>& points, int& vertex, vector<bool>& visited)
+{
+  double distance;
+  double min_distance = INT_MAX;
+  int min_vertex;
+  double x = points[vertex][0];
+  double y = points[vertex][1];
+  for(int i = 0; i < points.size(); i++)
+    {
+      if(visited[i] == 0)
+      {
+        distance = Distance(x, y, points[i][0], points[i][1]);
+        if(distance < min_distance)
+        {
+          min_distance = distance;
+          min_vertex = i;
+        }
+      }
+    }
+  vertex = min_vertex;
+  return min_distance;
+}
+
+//
+double Tree(vector<vector<double>>& points, vector<int>& houses, vector<bool>& visited)
+{
+  double sum = 0;
+  //first stop is first point
+  int vertex = 0;
+  visited[0] = 1;
+  houses.push_back(0); //0 is first house on tour
+  //while some houses are still unvisited
+  while(!Done(visited))
+    {
+      //pick next vertex
+      sum += Next_Vertex_Dist(points, vertex, visited);
+      //now vertex holds the next vertex so let's mark as visited
+      visited[vertex] = 1;
+      houses.push_back(vertex);
+      //now we've added the distance to our tour, marked vertex as visited, and aded it to tour so let's go again
+    }
+  //we have visited all vertices so let's add the distance back to vertex 0
+  sum+= Distance(points[0][0], points[0][1], points[vertex][0], points[vertex][1]);
+  return sum;
+}
+
+double Total_Distance(vector<int>& houses, vector<vector<double>>& points)
+{
+  double sum = 0;
+  double x1;
+  double y1;
+  double x2;
+  double y2;
+  for(int i = 0;i < houses.size() - 1; i++)
+    {
+      x1 = points[houses[i]][0];
+      y1 = points[houses[i]][1];
+      x2 = points[houses[i+1]][0];
+      y2 = points[houses[i+1]][1];
+      sum += Distance(x1, y1, x2, y2);
+    }
+  //add distance back to point 0
+  sum+= Distance(points[houses[0]][0], points[houses[0]][1], points[houses[houses.size()-1]][0], points[houses[houses.size()-1]][1]);
+  return sum;
+}
+
+//make sure you dont repeat t's
+bool Find_i(vector<double>& v, int i)
+{
+  bool sol = false;
+  for(int j = 0; j < v.size(); j++)
+    {
+      if(v[j] == i)
+        sol = true;
+    }
+  return sol;
+}
+
+double Swap(vector<int>& houses, vector<vector<double>>& points)
+{
+  srand(time(0));
+  int behind;
+  int t1;
+  int t2;
+  int t3;
+  int t4;
+  vector<double> my_t_values;
+  double min_dist = INT_MAX;
+  double distance;
+  int x; //for swap
+  double min_tour_dist = INT_MAX;
+  vector<int> min_tour;
+  double compare;
+  bool fail = false;
+
+  t1 = rand() % (houses.size()-1) + 1;
+  int amount = rand() % (houses.size()/2) + houses.size()/2;
+
+  for(int j = 0; j < amount; j++){
+    
+  behind = t1-1; 
+  if(t1 == houses.size()-1)
+    t2 = 0;
+  else
+    t2 = t1+1;
+  my_t_values.push_back(t2);
+  min_dist = INT_MAX; //reset
+  for(int i = 1; i < points.size(); i++)
+    {
+      if(i != behind && i != t2 && i != t1 && Find_i(my_t_values, i) == false)
+      {
+        distance = Distance(points[houses[t2]][0], points[houses[t2]][1], points[houses[i]][0], points[houses[i]][1]);
+          if(distance < min_dist)
+          {
+            t3 = i;
+            min_dist = distance;
+          }
+        }
+    }  
+    my_t_values.push_back(t3);
+    t4 = t3 - 1;
+    my_t_values.push_back(t4);
+
+
+ 
+  if(t2 < t4)
+  {
+    //swap t2 and t4
+    x = houses[t2];
+  houses[t2] = houses[t4];
+  houses[t4] = x;
+    //reverse in between 
+    reverse(houses.begin() + t2+1, houses.begin() + t4);
+  }
+    else
+  {
+    // t2 > t4, swap t3 and t1 (always swap instide t's)
+    x = houses[t1];
+  houses[t1] = houses[t3];
+  houses[t3] = x;
+    //reverse
+    reverse(houses.begin() + t3+1, houses.begin() + t1);
+    //now t3 is where t1 was so to keep track of t1, do t1 = t3
+    t1 = t3;
+  }
+
+    //find length of new tour
+    compare = Total_Distance(houses, points);
+    //compare to best seen
+    if(compare < min_tour_dist){
+         min_tour_dist  = compare;
+        min_tour = houses;
+        }
+
+  
+    
+    }
+    
+  houses = min_tour;
+  return min_tour_dist;
+}
+
+double Sim_An(double distance, vector<int>& houses, vector<vector<double>>& points)
+{
+  vector<int> houses_copy;
+  srand(time(0));
+  double temp = 10000;
+  double new_distance;
+  double r; // random decimal
+  double p; // probablility
+  while(temp > 0)
+    {
+      //make a copy of houses so we can use it to do the swap and still have original houses
+      houses_copy = houses;
+      //calculate new distance, houses_copy will have houses corr with new distance
+      new_distance = Swap(houses_copy, points);
+      if(new_distance <= distance)
+      {
+        //keep this one
+        distance = new_distance;
+        houses = houses_copy;
+        //and store as best ever if it's smaller 
+        if(distance < best_dist){
+          best_dist = distance;
+        best_tour = houses;
+        }
+        
+      }
+      else
+      {
+        //do weird formula 
+        r = rand() % 100 / 100.0;
+        p = exp(-(new_distance - distance)/temp) * 1.0;
+        if(p >= r)
+        {
+          //keep it
+         distance = new_distance;
+         houses = houses_copy;
+        }
+      }
+      //reduce temp;
+      temp = temp -.01;
+        go++;
+      if(go%4000 == 0)
+      {
+        cout << best_dist << endl;
+        Print(best_tour);
+          cout << endl;
+      }
+
+        
+      
+    }
+
+  return distance;
+}
+
+int main() {
+  ifstream fin;
+  int vertices;
+  vector<vector<double>> points; // vertices # of rows, 2 columns to store x and y values of each point
+  double x;
+  double y;
+  
+  string fin_name;
+  cout << "Enter file name: ";
+  cin >> fin_name;
+  fin.open(fin_name.data());
+  fin >> vertices;
+  points.resize(vertices);
+  for(int i = 0; i < vertices; i++)
+    {
+      points[i].resize(2);
+    }
+
+  int i = 0; //keep track of vertex number
+while(fin >> x)//while there are items left to read
+    {
+      fin >> y;
+      points[i][0] = x;
+      points[i][1] = y;
+      i++;
+    }
+    fin.close();
+
+  vector<bool> visited;
+  visited.resize(vertices);
+
+  vector<int> houses;
+
+  double answer = Tree(points, houses, visited);
+  
+  best_dist = answer;
+  best_tour = houses;
+
+
+  answer = Sim_An(answer, houses, points);
+  cout << best_dist << endl;
+  for(int i = 0; i < best_tour.size(); i++)
+    {
+      cout << best_tour[i] << " ";
+    }
+  cout << endl;
+  cout << endl;
+ 
+ 
+
+  return 0;
+}
